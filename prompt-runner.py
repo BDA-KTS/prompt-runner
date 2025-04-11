@@ -1,6 +1,6 @@
 import argparse
-import csv
 from enum import Enum
+import pandas
 import requests
 import os
 from typing import List
@@ -31,7 +31,7 @@ messages_type = TypeAdapter(List[Message])
 def get_prompt_template(prompt_template = args.prompt_template):
     if prompt_template.endswith(".json"):
         try:
-            prompt_template = requests.get(prompt_template).content
+            prompt_template = requests.get(prompt_template).text
         except ValueError: # Error parsing URL => try as filename
             if os.path.isfile(prompt_template):
                 with open(prompt_template, "r") as prompt_file:
@@ -40,23 +40,15 @@ def get_prompt_template(prompt_template = args.prompt_template):
     messages_type.validate_json(prompt_template)
     return prompt_template
 
-def get_values(values_path = args.values):
-    try:
-        for row in csv.DictReader(requests.get(values_path).content):
-            yield row
-    except ValueError: # Error parsing URL => try as filename
-        with open(values_path, "r", newline="") as values_file:
-            for row in csv.DictReader(values_file):
-                yield row
-
-def get_prompts(values, prompt_template):
-    for row in values:
+def get_prompts(prompt_template, values_path = args.values):
+    for index, values in pandas.read_csv(values_path).iterrows():
         prompt = prompt_template
-        for key in row:
-            prompt = prompt.replace(f'{{{key}}}', str(row[key]))
-        yield messages_type.validate_json(prompt)
+        for key, value in values.items():
+            prompt = prompt.replace(f'{{{key}}}', str(value))
+        yield messages_type.validate_json(prompt), values
 
-for prompt in get_prompts(get_values(), get_prompt_template()):
+for prompt, values in get_prompts(get_prompt_template()):
     print(messages_type.dump_json(prompt))
+    print(values)
 
 
